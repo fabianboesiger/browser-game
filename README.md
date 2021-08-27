@@ -1,1 +1,5 @@
-# generic-idea-plugin
+# Browser Game
+
+## Debug
+
+`bash run.sh` starts backend and frontend in debug mode.
