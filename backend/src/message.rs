@@ -29,7 +29,7 @@ pub mod response {
     use serde::{Serialize, Deserialize};
     use tokio_tungstenite::tungstenite::Message;
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Clone)]
     #[serde(rename_all = "camelCase")]
     pub enum Response {
         Register(Register),
@@ -42,16 +42,17 @@ pub mod response {
         }
     }
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Clone, Copy)]
     #[serde(rename_all = "camelCase")]
     pub enum Register {
         Success,
         InvalidName,
+        InvalidPassword,
         UsernameTaken,
     }
 
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Clone, Copy)]
     #[serde(rename_all = "camelCase")]
     pub enum Login {
         Success,

@@ -1,9 +1,6 @@
-use futures_util::{SinkExt, StreamExt, stream::SplitSink};
-use tokio::{
-    sync::Mutex,
-    net::TcpStream,
-};
-use tokio_tungstenite::{accept_async, WebSocketStream, tungstenite::Message};
+use futures_util::{SinkExt, StreamExt};
+use tokio::{net::TcpStream, sync::{Mutex, mpsc::{self, UnboundedSender}}};
+use tokio_tungstenite::accept_async;
 use std::{collections::HashMap};
 use crate::message::{
     request::{Request, self},
@@ -16,22 +13,33 @@ type User = String;
 type AnyError = Box<dyn std::error::Error + Send + Sync>;
 
 struct Responder {
-    sinks: Mutex<HashMap<User, Vec<SplitSink<WebSocketStream<TcpStream>, Message>>>>
+    sinks: Mutex<HashMap<User, Vec<UnboundedSender<Response>>>>
 }
 
 impl Responder {
-    async fn add_user(&self, user: User, sink: SplitSink<WebSocketStream<TcpStream>, Message>) {
-        self.sinks.lock().await.entry(user).or_insert(Vec::new()).push(sink);
+    async fn add_user(&self, user: User, tx: UnboundedSender<Response>) {
+        self.sinks.lock().await.entry(user).or_insert(Vec::new()).push(tx);
     }
 
-    async fn respond(&self, to: Vec<User>, response: &Response) {
+    async fn update_user(&self, user: User, new_user: User) {
+        //self.sinks.lock().await.entry(user).or_insert(Vec::new()).push(tx);
+    }
+
+    async fn respond(&self, to: &[User], response: Response) {
         //let string = serde_json::to_string(&Response::RegisterResult(RegisterResult::InvalidName)).unwrap();
+        for user in to {
+            if let Some(txs) = self.sinks.lock().await.get(user) {
+                for tx in txs {
+                    tx.send(response.clone()).unwrap();
+                }
+            }
+        }
     }
 }
 
 pub struct Transport {
     responder: Arc<Responder>,
-    conn: Arc<SqlitePool>,
+    conn: SqlitePool,
 }
 
 impl Transport {
@@ -40,7 +48,7 @@ impl Transport {
             responder: Arc::new(Responder {
                 sinks: Mutex::new(HashMap::new())
             }),
-            conn: Arc::new(SqlitePool::connect("sqlite:database.db").await.unwrap())
+            conn: SqlitePool::connect("sqlite:database.db").await.unwrap()
         }
     }
 
@@ -53,6 +61,12 @@ impl Transport {
         tokio::spawn(async move {
             let ws_stream = accept_async(stream).await.unwrap();
             let (mut sink, mut stream) = ws_stream.split();
+            let (tx, mut rx) = mpsc::unbounded_channel::<Response>(); 
+            tokio::spawn(async move {
+                while let Some(msg) = rx.recv().await {
+                    sink.send(msg.as_message()).await.unwrap();
+                }
+            });
             let mut user = None;
 
             while let Some(msg) = stream.next().await {
@@ -85,9 +99,10 @@ impl Transport {
                                         .await?;
     
                                     user = Some(username);
-                                    sink.send(Response::Register(response::Register::Success).as_message()).await?;
+                                    responder.add_user(user.clone().unwrap(), tx.clone()).await;
+                                    tx.send(Response::Register(response::Register::Success))?;
                                 } else {
-                                    sink.send(Response::Register(response::Register::UsernameTaken).as_message()).await?;
+                                    tx.send(Response::Register(response::Register::UsernameTaken))?;
                                 }
                                 
                             },
@@ -108,18 +123,19 @@ impl Transport {
                                 if let Some(row) = users.first() {
                                     if password == row.password {
                                         user = Some(username);
-                                        sink.send(Response::Login(response::Login::Success).as_message()).await?;
+                                        responder.add_user(user.clone().unwrap(), tx.clone()).await;
+                                        tx.send(Response::Login(response::Login::Success))?;
                                     } else {
-                                        sink.send(Response::Login(response::Login::IncorrectPassword).as_message()).await?;
+                                        tx.send(Response::Login(response::Login::IncorrectPassword))?;
                                     }
                                 } else {
-                                    sink.send(Response::Login(response::Login::UserNotFound).as_message()).await?;
+                                    tx.send(Response::Login(response::Login::UserNotFound))?;
                                 }
                                 
                             },
                             request if user.is_some() => {
                                 // Handle authenticated requests.
-                                game(user.clone().unwrap(), responder.clone(), request, &mut transaction).await?;
+                                game(user.clone().unwrap(), request, responder.clone(), &mut transaction).await?;
                             },
                             _ => {
                                 // Ignore unauthenticated requests.
@@ -152,7 +168,9 @@ impl Transport {
     }
 }
 
-async fn game<'c>(user: User, responder: Arc<Responder>, request: Request, transaction: &mut Transaction<'c, Sqlite>) -> Result<(), AnyError> {
+async fn game<'c>(user: User, request: Request, responder: Arc<Responder>, transaction: &mut Transaction<'c, Sqlite>) -> Result<(), AnyError> {
     //responder.respond(vec![user], &Response::Init).await;
-    panic!();
+    match request {
+        Request::Register(_) | Request::Login(_) => unreachable!(),
+    }
 }

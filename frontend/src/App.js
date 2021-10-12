@@ -12,6 +12,7 @@ function App() {
   );
 }
 
+/*
 class Square extends React.Component {
   constructor(props) {
     super(props);
@@ -38,8 +39,10 @@ class Board extends React.Component {
     )
   }
 }
+*/
 
 class Game extends React.Component {
+  // Connect websocket.
   ws = new WebSocket("ws://localhost:8000");
 
   componentDidMount() {
@@ -53,11 +56,11 @@ class Game extends React.Component {
   }
 
   render() {
+    // Websocket needs to be passed to components.
     return (
       <div>
         <Register ws={this.ws}></Register>
         <Login ws={this.ws}></Login>
-        <Board></Board>
       </div>  
     )
   }

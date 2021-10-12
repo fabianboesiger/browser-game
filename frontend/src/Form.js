@@ -1,12 +1,15 @@
 import React from 'react';
 import './Form.css';
 
+// Listener is superclass for all components that
+// need to listen to the websocket stream.
 class Listener extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
       response: "",
     }
+    // TODO: Deriving the keyword to listen to form the class name is probably not ideal.
     this.keyword = this.constructor.name.toLowerCase();
   }
 
@@ -22,9 +25,10 @@ class Listener extends React.Component {
   }
 }
 
+// Form handles sending and receiving form data.
 class Form extends Listener {
   constructor(props) {
-    super(props, "register");
+    super(props);
     this.handleChange = this.handleChange.bind(this);
     this.handleSubmit = this.handleSubmit.bind(this);
   }
